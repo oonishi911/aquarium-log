@@ -1,0 +1,48 @@
+# 依存・ビルド成果物
+node_modules/
+dist/
+dev-dist/
+coverage/
+*.tsbuildinfo
+
+# 秘密情報（APIキーなど）は絶対にコミットしない
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# アプリのバックアップ・書き出しファイル（個人の記録データ）
+backup/
+backups/
+exports/
+*.zip
+*.csv
+aquarium-log-backup*.json
+
+# 写真・動画（記録用の実写真はリポジトリに入れない）
+photos/
+*.jpg
+*.jpeg
+*.JPG
+*.JPEG
+*.png
+*.PNG
+*.heic
+*.HEIC
+*.heif
+*.webp
+*.mov
+*.MOV
+*.mp4
+# アプリ自体のアイコン画像が必要になったら public/ 配下だけ許可する
+!public/**/*.png
+
+# OS・エディタ
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.log
