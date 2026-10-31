@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import ColorHistory from '../components/ColorHistory';
 import { OwnerPhotos, PhotoPicker } from '../components/Photos';
 import { plantName, TimelineList } from '../components/Timeline';
 import { Badge, btnPrimary, btnSecondary, Card, Choice, Field, PageHeader, SaveBar, Select, TextArea, TextInput } from '../components/ui';
@@ -137,6 +138,8 @@ export function PlantDetail() {
           編集
         </Link>
       </div>
+
+      <ColorHistory plantId={p.id} />
 
       <h2 className="mb-2 mt-5 font-bold">状態の履歴</h2>
       <TimelineList items={logs} empty="まだ状態の記録がありません" />

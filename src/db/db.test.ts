@@ -1,18 +1,27 @@
 import 'fake-indexeddb/auto';
+import Dexie from 'dexie';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { exportBackup, importBackup } from './backup';
 import { AquariumDB } from './db';
 import {
   ensureDefaults,
   findOrCreateSpecies,
+  getColorThresholds,
+  previousAnalysis,
+  saveColorAnalysis,
+  saveColorThresholds,
   saveConditionLog,
   saveLivestock,
   saveMaintenanceLog,
   saveTank,
+  saveTankRange,
   saveWaterReading,
+  tankRanges,
   tankSummary,
   timeline,
+  waterSeries,
 } from './repo';
+import { defaultThresholds } from '../lib/color';
 
 let db: AquariumDB;
 let n = 0;
@@ -118,5 +127,88 @@ describe('バックアップ', () => {
 
   it('関係ないファイルは読み込まない', async () => {
     await expect(importBackup(db, { foo: 1 })).rejects.toThrow('バックアップファイルではありません');
+  });
+});
+
+describe('グラフと注意範囲', () => {
+  it('項目ごとの推移（古い順）と換水日を返す', async () => {
+    const t = await tank();
+    await saveWaterReading(db, { tank_id: t.id, measured_at: '2026-10-30T10:00:00.000Z', source: 'manual' }, { temp: 26.1, ph: 6.5 });
+    await saveWaterReading(db, { tank_id: t.id, measured_at: '2026-10-29T10:00:00.000Z', source: 'manual' }, { temp: 25.5 });
+    await saveMaintenanceLog(db, { tank_id: t.id, done_at: '2026-10-29T12:00:00.000Z', type: 'water_change' });
+    await saveMaintenanceLog(db, { tank_id: t.id, done_at: '2026-10-29T13:00:00.000Z', type: 'feeding' });
+    const { series, waterChanges } = await waterSeries(db, t.id);
+    expect(series.temp.map((p) => p.value)).toEqual([25.5, 26.1]);
+    expect(series.ph).toHaveLength(1);
+    expect(waterChanges).toEqual(['2026-10-29T12:00:00.000Z']);
+  });
+
+  it('注意範囲は水槽ごとに保存し、両方空なら初期値に戻す', async () => {
+    const t = await tank();
+    await saveTankRange(db, { tank_id: t.id, parameter_id: 'temp', min: 22, max: 25 });
+    expect(await tankRanges(db, t.id)).toEqual([{ tank_id: t.id, parameter_id: 'temp', min: 22, max: 25 }]);
+    await saveTankRange(db, { tank_id: t.id, parameter_id: 'temp' });
+    expect(await tankRanges(db, t.id)).toEqual([]);
+  });
+});
+
+describe('色変化レポート', () => {
+  const analysis = (plant_id: string, taken_at: string) => ({
+    plant_id,
+    tank_id: 't',
+    photo_id: `photo-${taken_at}`,
+    taken_at,
+    region: { shape: 'rect' as const, x: 0, y: 0, w: 1, h: 1 },
+    green_pct: 60,
+    yellow_pct: 20,
+    brown_pct: 10,
+    other_pct: 10,
+    excluded_pct: 5,
+    condition_ok: true,
+    generated_text: '',
+    settings_snapshot: defaultThresholds,
+  });
+
+  it('比較相手はその写真より前の最新の分析', async () => {
+    const a1 = await saveColorAnalysis(db, analysis('p1', '2026-10-01T10:00:00.000Z'));
+    const a2 = await saveColorAnalysis(db, analysis('p1', '2026-10-15T10:00:00.000Z'));
+    await saveColorAnalysis(db, analysis('p2', '2026-10-20T10:00:00.000Z'));
+    expect((await previousAnalysis(db, 'p1', '2026-10-30T10:00:00.000Z'))?.id).toBe(a2.id);
+    expect((await previousAnalysis(db, 'p1', '2026-10-10T10:00:00.000Z'))?.id).toBe(a1.id);
+    expect(await previousAnalysis(db, 'p1', '2026-09-01T10:00:00.000Z')).toBeUndefined();
+  });
+
+  it('しきい値は保存がなければ初期値', async () => {
+    expect(await getColorThresholds(db)).toEqual(defaultThresholds);
+    await saveColorThresholds(db, { ...defaultThresholds, greenMin: 65 });
+    expect((await getColorThresholds(db)).greenMin).toBe(65);
+  });
+
+  it('バックアップに注意範囲・色分析・設定も入る', async () => {
+    await saveTankRange(db, { tank_id: 't', parameter_id: 'ph', min: 6, max: 7 });
+    await saveColorAnalysis(db, analysis('p1', '2026-10-01T10:00:00.000Z'));
+    await saveColorThresholds(db, { ...defaultThresholds, minS: 0.2 });
+    const json = JSON.parse(JSON.stringify(await exportBackup(db)));
+    const other = new AquariumDB(`test-db-${n++}`);
+    await importBackup(other, json);
+    expect(await other.tankRanges.count()).toBe(1);
+    expect(await other.colorAnalyses.count()).toBe(1);
+    expect((await getColorThresholds(other)).minS).toBe(0.2);
+    other.close();
+  });
+});
+
+describe('データ形式の移行', () => {
+  it('v2 の記録を残したまま v3 に上がる', async () => {
+    const name = `test-db-${n++}`;
+    const old = new Dexie(name);
+    old.version(2).stores({ tanks: 'id, status, updated_at', waterParameters: 'id, &key, sort' });
+    await old.table('tanks').add({ id: 'old', name: '古い水槽', status: 'active', created_at: '', updated_at: '' });
+    old.close();
+
+    const upgraded = new AquariumDB(name);
+    expect((await upgraded.tanks.get('old'))?.name).toBe('古い水槽');
+    expect(await upgraded.colorAnalyses.count()).toBe(0);
+    upgraded.close();
   });
 });

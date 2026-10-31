@@ -1,22 +1,25 @@
+import type { ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import { db } from '../db/db';
 import { livestockStatusLabels, maintenanceTypeLabels, measureMethodLabels, plantStatusLabels } from '../db/labels';
 import { deleteConditionLog, deleteMaintenanceLog, deleteWaterReading, type TimelineItem } from '../db/repo';
-import type { Livestock, LivestockStatus, Plant, PlantStatus, WaterParameter } from '../db/types';
+import type { Livestock, LivestockStatus, Plant, PlantStatus, TankRange, WaterParameter } from '../db/types';
 import { fmtDateTime } from '../lib/date';
+import { isOutOfRange, rangeFor } from '../lib/range';
 import { OwnerPhotos } from './Photos';
 import { Badge, Empty } from './ui';
 
 // 生体・水草・水槽の表示名をまとめて引く
 export function useNames() {
   return useLiveQuery(async () => {
-    const [tanks, species, livestock, plants, params] = await Promise.all([
+    const [tanks, species, livestock, plants, params, ranges] = await Promise.all([
       db.tanks.toArray(),
       db.species.toArray(),
       db.livestock.toArray(),
       db.plants.toArray(),
       db.waterParameters.orderBy('sort').toArray(),
+      db.tankRanges.toArray(),
     ]);
     const speciesName = new Map(species.map((s) => [s.id, s.name]));
     return {
@@ -24,6 +27,7 @@ export function useNames() {
       livestock: new Map(livestock.map((l) => [l.id, livestockName(l, speciesName)])),
       plant: new Map(plants.map((p) => [p.id, plantName(p, speciesName)])),
       params,
+      ranges: (tankId: string) => ranges.filter((r) => r.tank_id === tankId),
     };
   });
 }
@@ -41,25 +45,40 @@ export function fmtValue(p: WaterParameter, v: number) {
   return `${v.toFixed(p.decimals)}${p.unit}`;
 }
 
-export function waterSummary(values: Record<string, number>, params: WaterParameter[]) {
-  return params
-    .filter((p) => values[p.id] !== undefined)
-    .map((p) => `${p.label} ${fmtValue(p, values[p.id])}`)
-    .join(' / ');
+// 水質の値の並び。注意範囲から外れた値は赤字＋⚠で示す（色だけに頼らない）
+function WaterValues({ values, params, ranges }: { values: Record<string, number>; params: WaterParameter[]; ranges: TankRange[] }) {
+  const shown = params.filter((p) => values[p.id] !== undefined);
+  if (!shown.length) return <>（値なし）</>;
+  return (
+    <>
+      {shown.map((p, i) => {
+        const out = isOutOfRange(values[p.id], rangeFor(ranges, p.id));
+        return (
+          <span key={p.id}>
+            {i > 0 && ' / '}
+            <span className={out ? 'text-red-700' : ''}>
+              {out && '⚠'}
+              {p.label} {fmtValue(p, values[p.id])}
+            </span>
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
 const kindLabel = { water: '水質', maintenance: '作業', condition: '状態' } as const;
 const kindTone = { water: 'green', maintenance: 'gray', condition: 'amber' } as const;
 
 function Row({ item, names, showTank }: { item: TimelineItem; names: NonNullable<ReturnType<typeof useNames>>; showTank: boolean }) {
-  let title = '';
+  let title: ReactNode = '';
   let detail = '';
   let editTo = '';
   let owner: 'water' | 'maintenance' | 'condition' = 'water';
   let remove: () => Promise<void>;
 
   if (item.kind === 'water') {
-    title = waterSummary(item.values, names.params) || '（値なし）';
+    title = <WaterValues values={item.values} params={names.params} ranges={names.ranges(item.tank_id)} />;
     detail = [item.reading.method && measureMethodLabels[item.reading.method], item.reading.memo].filter(Boolean).join(' ・ ');
     editTo = `/water/${item.reading.id}/edit`;
     owner = 'water';

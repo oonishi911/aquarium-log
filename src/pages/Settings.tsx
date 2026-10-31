@@ -4,8 +4,9 @@ import { btnDanger, btnPrimary, btnSecondary, Card, Field, NumberInput, PageHead
 import { backupFileName, exportBackup, importBackup } from '../db/backup';
 import { DB_NAME, SCHEMA_VERSION, db } from '../db/db';
 import { maintenanceTypeLabels } from '../db/labels';
-import { saveMaintenanceTemplate } from '../db/repo';
-import type { MaintenanceTemplate } from '../db/types';
+import { getColorThresholds, saveColorThresholds, saveMaintenanceTemplate } from '../db/repo';
+import type { ColorThresholds, MaintenanceTemplate } from '../db/types';
+import { defaultThresholds } from '../lib/color';
 import { fmtDateTime } from '../lib/date';
 
 // 最終バックアップ日時は表示用の目安なので、端末の localStorage に置く
@@ -24,6 +25,7 @@ export default function Settings() {
       <PageHeader title="設定" />
       <WaterParams />
       <Templates />
+      <ColorSettings />
       <BackupSection />
       <p className="mt-6 text-xs text-slate-500">
         DB: {DB_NAME} / スキーマ v{SCHEMA_VERSION}
@@ -123,6 +125,70 @@ function Templates() {
             ＋ テンプレートを追加
           </button>
         )}
+      </Card>
+    </>
+  );
+}
+
+const thresholdFields: [keyof ColorThresholds, string, string][] = [
+  ['greenMin', '緑 色相の下限', '°'],
+  ['greenMax', '緑 色相の上限', '°'],
+  ['yellowMin', '黄 色相の下限（上限は緑の下限）', '°'],
+  ['brownMin', '茶 色相の下限（上限は黄の下限）', '°'],
+  ['brownMaxV', '茶とみなす明るさの上限', '0〜1'],
+  ['minS', '除外: 彩度がこれ未満', '0〜1'],
+  ['minV', '除外: 明るさがこれ未満', '0〜1'],
+  ['maxV', '除外: 明るさがこれを超える反射', '0〜1'],
+];
+
+function ColorSettings() {
+  const [t, setT] = useState<ColorThresholds>();
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    getColorThresholds(db).then(setT);
+  }, []);
+  if (!t) return null;
+
+  async function save(next: ColorThresholds) {
+    if (next.yellowMin >= next.greenMin || next.brownMin >= next.yellowMin || next.greenMin >= next.greenMax) {
+      return alert('色相は 茶の下限 < 黄の下限 < 緑の下限 < 緑の上限 の順になるようにしてください');
+    }
+    await saveColorThresholds(db, next);
+    setT(next);
+    setSaved(true);
+  }
+
+  return (
+    <>
+      <h2 className="mb-2 mt-5 font-bold">水草の色分類のしきい値</h2>
+      <Card>
+        <p className="mb-2 text-xs text-slate-500">
+          色変化レポートで、画素を緑・黄・茶に分ける基準です。色相は 0〜360°（赤 0°・黄 60°・緑 120°）。保存済みのレポートの数値は変わりません。
+        </p>
+        {thresholdFields.map(([key, label, unit]) => (
+          <div key={key} className="grid grid-cols-[1fr_6rem] items-center gap-2 border-b py-1.5 last:border-b-0">
+            <span className="text-sm">
+              {label}
+              <span className="ml-1 text-xs text-slate-500">{unit}</span>
+            </span>
+            <NumberInput
+              value={t[key]}
+              onChange={(v) => {
+                setSaved(false);
+                setT({ ...t, [key]: v ?? defaultThresholds[key] });
+              }}
+            />
+          </div>
+        ))}
+        <div className="mt-2 flex gap-2">
+          <button type="button" className={`${btnPrimary} flex-1 py-2`} onClick={() => save(t)}>
+            保存
+          </button>
+          <button type="button" className={btnSecondary} onClick={() => save(defaultThresholds)}>
+            初期値に戻す
+          </button>
+        </div>
+        {saved && <p className="mt-2 text-xs text-teal-700">✓ 保存しました</p>}
       </Card>
     </>
   );

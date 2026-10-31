@@ -175,3 +175,50 @@ export type Photo = {
   condition_memo?: string;
   created_at: string;
 };
+
+// 注意範囲（水槽ごと・項目ごと）。片側だけの指定もできる
+export type TankRange = {
+  tank_id: string;
+  parameter_id: string;
+  min?: number;
+  max?: number;
+};
+
+// 水草の色分類のしきい値（色相は 0〜360°、彩度・明度は 0〜1）
+export type ColorThresholds = {
+  greenMin: number;
+  greenMax: number;
+  yellowMin: number; // 黄は yellowMin〜greenMin
+  brownMin: number; // 茶は brownMin〜yellowMin かつ明度 brownMaxV 以下
+  brownMaxV: number;
+  minS: number; // これより彩度が低い画素（影・砂・ガラス）は集計から除外
+  minV: number; // これより暗い画素は除外
+  maxV: number; // これより明るく、彩度も低い画素（反射）は除外
+};
+
+// 写真上で選んだ範囲。座標は画像の幅・高さに対する 0〜1 の割合
+export type ColorRegion =
+  | { shape: 'rect'; x: number; y: number; w: number; h: number }
+  | { shape: 'lasso'; points: [number, number][] };
+
+export type ColorAnalysis = Timestamps & {
+  id: string;
+  plant_id: string;
+  tank_id: string;
+  photo_id: string;
+  taken_at: string; // 写真の撮影日時。比較の順番はこれで決める
+  region: ColorRegion;
+  green_pct: number;
+  yellow_pct: number;
+  brown_pct: number;
+  other_pct: number;
+  excluded_pct: number; // 範囲内で集計から外した画素の割合（参考）
+  condition_ok: boolean; // 撮影ルールを守れたか
+  condition_memo?: string;
+  compared_with_id?: string;
+  generated_text: string;
+  settings_snapshot: ColorThresholds;
+};
+
+// アプリ設定（キー・値）。バックアップに含めるため DB に置く
+export type AppSetting = { key: string; value: unknown };

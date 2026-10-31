@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { PhotoGrid } from '../components/Photos';
 import { livestockName, plantName, TimelineList } from '../components/Timeline';
+import WaterCharts from '../components/WaterCharts';
 import { Badge, btnPrimary, btnSecondary, Card, Empty, PageHeader } from '../components/ui';
 import { db } from '../db/db';
 import {
@@ -192,6 +193,8 @@ function RecordsTab({ tankId, kind }: { tankId: string; kind: 'water' | 'mainten
       <Link to={`/tanks/${tankId}/${kind}/new`} className={`${btnPrimary} mb-3 block text-center`}>
         ＋ {kind === 'water' ? '水質を記録' : '作業を記録'}
       </Link>
+      {kind === 'water' && <WaterCharts tankId={tankId} />}
+      {kind === 'water' && <h2 className="mb-2 font-bold">記録</h2>}
       <TimelineList items={items} />
     </div>
   );

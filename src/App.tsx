@@ -2,12 +2,15 @@ import { useEffect } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { db } from './db/db';
 import { ensureDefaults } from './db/repo';
+import ColorReport from './pages/ColorReport';
 import ConditionForm from './pages/ConditionForm';
 import Home from './pages/Home';
 import { LivestockDetail, LivestockForm } from './pages/Livestock';
 import MaintenanceForm from './pages/MaintenanceForm';
+import PhotoGuide from './pages/PhotoGuide';
 import { PlantDetail, PlantForm } from './pages/Plant';
 import QuickRecord from './pages/QuickRecord';
+import RangeForm from './pages/RangeForm';
 import Records from './pages/Records';
 import Settings from './pages/Settings';
 import TankDetail from './pages/TankDetail';
@@ -37,12 +40,15 @@ export default function App() {
           <Route path="/tanks/new" element={<TankForm />} />
           <Route path="/tanks/:id" element={<TankDetail />} />
           <Route path="/tanks/:id/edit" element={<TankForm />} />
+          <Route path="/tanks/:id/ranges" element={<RangeForm />} />
           <Route path="/tanks/:tankId/livestock/new" element={<LivestockForm />} />
           <Route path="/livestock/:id" element={<LivestockDetail />} />
           <Route path="/livestock/:id/edit" element={<LivestockForm />} />
           <Route path="/tanks/:tankId/plants/new" element={<PlantForm />} />
           <Route path="/plants/:id" element={<PlantDetail />} />
           <Route path="/plants/:id/edit" element={<PlantForm />} />
+          <Route path="/plants/:id/color" element={<ColorReport />} />
+          <Route path="/guide" element={<PhotoGuide />} />
           <Route path="/condition/:targetType/:targetId/new" element={<ConditionForm />} />
           <Route path="/condition/:id/edit" element={<ConditionForm />} />
           <Route path="/tanks/:tankId/water/new" element={<WaterForm />} />
