@@ -1,7 +1,10 @@
 // 画面から使うデータ操作。テストしやすいよう DB インスタンスを引数で受け取る
 import type { AquariumDB } from './db';
 import { defaultWaterParameters } from './labels';
+import { defaultThresholds } from '../lib/color';
 import type {
+  ColorAnalysis,
+  ColorThresholds,
   ConditionLog,
   Livestock,
   MaintenanceLog,
@@ -10,6 +13,7 @@ import type {
   Plant,
   SpeciesKind,
   Tank,
+  TankRange,
   WaterReading,
 } from './types';
 
@@ -244,3 +248,45 @@ export async function tankSummary(db: AquariumDB, tankId: string) {
   const changes = await db.maintenanceLogs.where('tank_id').equals(tankId).filter((l) => l.type === 'water_change').sortBy('done_at');
   return { latest, lastWaterChange: changes[changes.length - 1]?.done_at };
 }
+
+// 水質グラフ用: 項目ごとの測定値（古い順）と、換水の日時
+export async function waterSeries(db: AquariumDB, tankId: string) {
+  const readings = await db.waterReadings.where('tank_id').equals(tankId).toArray();
+  const at = new Map(readings.map((r) => [r.id, r.measured_at]));
+  const values = await db.waterValues.where('reading_id').anyOf([...at.keys()]).toArray();
+  const series: Record<string, { at: string; value: number }[]> = {};
+  for (const v of values) (series[v.parameter_id] ??= []).push({ at: at.get(v.reading_id)!, value: v.value });
+  for (const list of Object.values(series)) list.sort((a, b) => a.at.localeCompare(b.at));
+  const waterChanges = (await db.maintenanceLogs.where('tank_id').equals(tankId).filter((l) => l.type === 'water_change').toArray())
+    .map((l) => l.done_at)
+    .sort();
+  return { series, waterChanges };
+}
+
+export const tankRanges = (db: AquariumDB, tankId: string) => db.tankRanges.where('tank_id').equals(tankId).toArray();
+
+// 注意範囲を保存。min・max とも空なら水槽ごとの設定を消して初期値に戻す
+export async function saveTankRange(db: AquariumDB, range: TankRange) {
+  if (range.min === undefined && range.max === undefined) await db.tankRanges.delete([range.tank_id, range.parameter_id]);
+  else await db.tankRanges.put(range);
+}
+
+const THRESHOLDS_KEY = 'colorThresholds';
+
+export async function getColorThresholds(db: AquariumDB): Promise<ColorThresholds> {
+  const row = await db.settings.get(THRESHOLDS_KEY);
+  return { ...defaultThresholds, ...(row?.value as Partial<ColorThresholds> | undefined) };
+}
+
+export const saveColorThresholds = (db: AquariumDB, value: ColorThresholds) => db.settings.put({ key: THRESHOLDS_KEY, value });
+
+// 水草の色分析（撮影日時の古い順）
+export const colorAnalysesOf = (db: AquariumDB, plantId: string) => db.colorAnalyses.where('plant_id').equals(plantId).sortBy('taken_at');
+
+// 比較相手の初期値: その写真より前に撮った、いちばん新しい分析
+export async function previousAnalysis(db: AquariumDB, plantId: string, takenAt: string, excludeId?: string) {
+  const list = await colorAnalysesOf(db, plantId);
+  return list.filter((a) => a.taken_at < takenAt && a.id !== excludeId).pop();
+}
+
+export const saveColorAnalysis = (db: AquariumDB, draft: Draft<ColorAnalysis>) => upsert<ColorAnalysis>(db.colorAnalyses, draft);

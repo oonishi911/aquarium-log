@@ -1,5 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type {
+  AppSetting,
+  ColorAnalysis,
   ConditionLog,
   Livestock,
   MaintenanceLog,
@@ -9,6 +11,7 @@ import type {
   Plant,
   Species,
   Tank,
+  TankRange,
   WaterParameter,
   WaterReading,
   WaterValue,
@@ -16,7 +19,7 @@ import type {
 
 export const DB_NAME = 'aquarium-log';
 // データ形式を変えるときはここを上げ、version().upgrade() で自動移行する
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export class AquariumDB extends Dexie {
   tanks!: Table<Tank, string>;
@@ -31,6 +34,9 @@ export class AquariumDB extends Dexie {
   maintenanceLogs!: Table<MaintenanceLog, string>;
   maintenanceTemplates!: Table<MaintenanceTemplate, string>;
   photos!: Table<Photo, string>;
+  tankRanges!: Table<TankRange, [string, string]>;
+  colorAnalyses!: Table<ColorAnalysis, string>;
+  settings!: Table<AppSetting, string>;
 
   constructor(name = DB_NAME) {
     super(name);
@@ -38,7 +44,7 @@ export class AquariumDB extends Dexie {
       tanks: 'id, status, updated_at',
       waterParameters: 'id, &key',
     });
-    this.version(SCHEMA_VERSION).stores({
+    this.version(2).stores({
       tanks: 'id, status, updated_at',
       species: 'id, kind, name',
       livestock: 'id, tank_id, species_id, status',
@@ -51,6 +57,12 @@ export class AquariumDB extends Dexie {
       maintenanceLogs: 'id, tank_id, done_at, type',
       maintenanceTemplates: 'id, name',
       photos: 'id, [owner_type+owner_id], tank_id, taken_at',
+    });
+    // v3: 注意範囲・水草の色分析・アプリ設定を追加
+    this.version(SCHEMA_VERSION).stores({
+      tankRanges: '[tank_id+parameter_id], tank_id',
+      colorAnalyses: 'id, plant_id, tank_id, taken_at',
+      settings: 'key',
     });
   }
 }

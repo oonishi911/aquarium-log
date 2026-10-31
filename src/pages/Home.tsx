@@ -4,8 +4,9 @@ import { Link } from 'react-router-dom';
 import { Badge, btnPrimary, Card, Empty } from '../components/ui';
 import { db } from '../db/db';
 import { attentionLivestock, attentionPlant, tankStatusLabels } from '../db/labels';
-import { tankSummary } from '../db/repo';
+import { tankRanges, tankSummary } from '../db/repo';
 import { daysSince } from '../lib/date';
+import { isOutOfRange, rangeFor } from '../lib/range';
 import { lastBackupAt } from './Settings';
 
 export default function Home() {
@@ -15,12 +16,15 @@ export default function Home() {
     tanks.sort((a, b) => a.created_at.localeCompare(b.created_at));
     return Promise.all(
       tanks.map(async (tank) => {
-        const [summary, sick, poorPlants] = await Promise.all([
+        const [summary, ranges, sick, poorPlants] = await Promise.all([
           tankSummary(db, tank.id),
+          tankRanges(db, tank.id),
           db.livestock.where('tank_id').equals(tank.id).filter((l) => attentionLivestock.includes(l.status)).count(),
           db.plants.where('tank_id').equals(tank.id).filter((p) => attentionPlant.includes(p.status)).count(),
         ]);
-        return { tank, summary, attention: sick + poorPlants };
+        // 最新の水温・pH が注意範囲を外れていたら、それも要注意に数える
+        const out = (['temp', 'ph'] as const).filter((k) => summary.latest[k] && isOutOfRange(summary.latest[k].value, rangeFor(ranges, k)));
+        return { tank, summary, out, attention: sick + poorPlants + out.length };
       }),
     );
   });
@@ -44,7 +48,7 @@ export default function Home() {
 
       {!cards.length && <Empty>まだ水槽がありません。下のボタンから追加してください。</Empty>}
 
-      {visible.map(({ tank, summary, attention }) => {
+      {visible.map(({ tank, summary, out, attention }) => {
         const temp = summary.latest.temp;
         const ph = summary.latest.ph;
         return (
@@ -55,8 +59,8 @@ export default function Home() {
               {tank.status !== 'active' && <Badge>{tankStatusLabels[tank.status]}</Badge>}
             </div>
             <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-              <Stat label="水温" value={temp ? `${temp.value.toFixed(1)}℃` : '—'} />
-              <Stat label="pH" value={ph ? ph.value.toFixed(1) : '—'} />
+              <Stat label="水温" value={temp ? `${temp.value.toFixed(1)}℃` : '—'} warn={out.includes('temp')} />
+              <Stat label="pH" value={ph ? ph.value.toFixed(1) : '—'} warn={out.includes('ph')} />
               <Stat label="最終換水" value={summary.lastWaterChange ? `${daysSince(summary.lastWaterChange)}日前` : '—'} />
             </div>
             {tank.started_on && <p className="mt-2 text-xs text-slate-500">立ち上げから {daysSince(tank.started_on)}日</p>}
@@ -77,11 +81,14 @@ export default function Home() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
-    <div className="rounded-lg bg-teal-50 py-1">
+    <div className={`rounded-lg py-1 ${warn ? 'bg-red-50' : 'bg-teal-50'}`}>
       <div className="text-xs text-slate-500">{label}</div>
-      <div className="font-bold">{value}</div>
+      <div className={`font-bold ${warn ? 'text-red-700' : ''}`}>
+        {warn && '⚠'}
+        {value}
+      </div>
     </div>
   );
 }

@@ -28,6 +28,9 @@ const plainTables = [
   'waterValues',
   'maintenanceLogs',
   'maintenanceTemplates',
+  'tankRanges',
+  'colorAnalyses',
+  'settings',
 ] as const;
 
 function bytesToBase64(bytes: Uint8Array) {

@@ -108,3 +108,15 @@ export const defaultWaterParameters: WaterParameter[] = [
   { id: 'no3', key: 'no3', label: '硝酸塩', unit: 'mg/L', decimals: 1, visible: false, sort: 7 },
   { id: 'tds', key: 'tds', label: 'TDS', unit: 'ppm', decimals: 0, visible: false, sort: 8 },
 ];
+
+// 注意範囲の初期値（淡水熱帯魚・水草水槽の一般的な目安）。水槽ごとに上書きできる
+export const defaultWaterRanges: Record<string, { min?: number; max?: number }> = {
+  temp: { min: 24, max: 28 },
+  ph: { min: 6.0, max: 7.5 },
+  kh: { min: 1, max: 6 },
+  gh: { min: 2, max: 10 },
+  nh3: { max: 0.2 },
+  no2: { max: 0.1 },
+  no3: { max: 25 },
+  tds: { min: 50, max: 300 },
+};
